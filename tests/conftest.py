@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2017 Free Software Foundation Europe e.V. <https://fsfe.org>
 # SPDX-FileCopyrightText: 2022 Florian Snow <florian@familysnow.net>
 # SPDX-FileCopyrightText: 2022 Carmen Bianca Bakker <carmenbianca@fsfe.org>
+# SPDX-FileCopyrightText: 2022 Pietro Albini <pietro.albini@ferrous-systems.com>
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -84,6 +85,11 @@ def multiprocessing(request, monkeypatch) -> bool:
     yield request.param
 
 
+@pytest.fixture(params=[True, False])
+def add_license_concluded(request) -> bool:
+    yield request
+
+
 @pytest.fixture()
 def empty_directory(tmpdir_factory) -> Path:
     """Create a temporary empty directory."""
@@ -115,6 +121,13 @@ def fake_repository(tmpdir_factory) -> Path:
     (directory / "src/custom.py").write_text(
         "SPDX-FileCopyrightText: 2017 Jane Doe\n"
         "SPDX-License-Identifier: LicenseRef-custom",
+        encoding="utf-8",
+    )
+    (directory / "src/multiple_licenses.rs").write_text(
+        "SPDX-FileCopyrightText: 2022 Jane Doe\n"
+        "SPDX-License-Identifier: GPL-3.0-or-later\n"
+        "SPDX-License-Identifier: Apache-2.0 OR CC0-1.0"
+        " WITH Autoconf-exception-3.0\n",
         encoding="utf-8",
     )
 
@@ -162,15 +175,7 @@ def git_repository(fake_repository: Path, git_exe: Optional[str]) -> Path:
     )
 
     subprocess.run([git_exe, "add", str(fake_repository)], check=True)
-    subprocess.run(
-        [
-            git_exe,
-            "commit",
-            "-m",
-            "initial",
-        ],
-        check=True,
-    )
+    git_commit(git_exe, "initial")
 
     return fake_repository
 
@@ -227,15 +232,7 @@ def submodule_repository(
     )
 
     subprocess.run([git_exe, "add", str(submodule)], check=True)
-    subprocess.run(
-        [
-            git_exe,
-            "commit",
-            "-m",
-            "initial",
-        ],
-        check=True,
-    )
+    git_commit(git_exe, "initial")
 
     os.chdir(git_repository)
 
@@ -256,15 +253,7 @@ def submodule_repository(
         ],
         check=True,
     )
-    subprocess.run(
-        [
-            git_exe,
-            "commit",
-            "-m",
-            "add submodule",
-        ],
-        check=True,
-    )
+    git_commit(git_exe, "add submodule")
 
     (git_repository / ".gitmodules.license").write_text(header)
 
@@ -365,6 +354,24 @@ def mock_date_today(monkeypatch):
     date = create_autospec(datetime.date)
     date.today.return_value = datetime.date(2018, 1, 1)
     monkeypatch.setattr(datetime, "date", date)
+
+
+def git_commit(git_exe, message):
+    subprocess.run(
+        [
+            git_exe,
+            # Git can be globally configured to digitally sign all commits,
+            # which causes problems when running the test suite, as the user
+            # would be prompted to authorize the signing multiple times per
+            # test execution. The option below configures git to skip signing.
+            "-c",
+            "commit.gpgSign=false",
+            "commit",
+            "-m",
+            message,
+        ],
+        check=True,
+    )
 
 
 # REUSE-IgnoreEnd
